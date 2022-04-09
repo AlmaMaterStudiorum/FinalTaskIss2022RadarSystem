@@ -1,0 +1,171 @@
+System radarsystemmodel
+
+mqttBroker "broker.hivemq.com" :1883 eventTopic "unibo/marchesini/sonar/events"
+
+/* controller -> sonar */
+Request  coordrequest : coordrequest(X)
+Reply    coordresponse: coordresponse(X)
+
+/* controller -> led */
+//Dispatch   ledon : ledon(X)
+//Dispatch   ledoff : ledoff(X)
+
+/* controller -> radar */
+Dispatch updateradar : updateradar(X)
+
+Event sonarrobot : sonarrobot(X)
+
+Context ctxpc ip[host="localhost" port=10000]
+
+QActor controller context ctxpc
+{
+
+	State initState initial 
+	{
+		println("Enter initState")
+	}
+	Goto wait
+	
+	State wait{ printCurrentMessage }
+	  Transition t0
+	   whenTime 1000 -> timeout 
+       
+	   
+	State timeout{
+		printCurrentMessage		
+		request  sonar -m coordrequest:coordrequest(X)
+  	}  
+	Goto waitforresponse
+  		
+   State waitforresponse{
+		printCurrentMessage		
+  	}  
+   Transition t0
+  		whenReply coordresponse -> handlesonarresponse
+  	
+   State handlesonarresponse{
+		printCurrentMessage		
+		println("controller receives answer")
+		onMsg(coordresponse:coordresponse(X))
+		{
+			println("coordresponse:coordresponse(DIST)")
+			[# var Dist = payloadArg(0).toInt()   #]
+			forward radar -m updateradar :updateradar($Dist) 	
+			//[# if (Dist > 10)  #]
+			//forward  led -m ledon : 1
+			//[# else #]  
+			//forward led -m ledoff : 0				
+		}			
+  	}  
+  	Goto wait
+	
+}
+
+QActor sonar context ctxpc
+{
+	[# var Dist = 0 	#]	//Kotlin code
+	State initState initial 
+	{
+		println("Enter initState")
+	}
+	Goto waitforrequest
+	
+	State waitforrequest
+	{
+		printCurrentMessage	
+	}
+	Transition t0
+		whenRequest coordrequest -> handlerequestfromcontroller
+		whenEvent sonarrobot -> handlerequestfromsonar
+		
+	State handlerequestfromcontroller
+	{
+		printCurrentMessage	
+		println("Dist : $Dist")
+		replyTo coordrequest with coordresponse:coordresponse($Dist)
+	}
+	Goto waitforrequest
+	
+	State handlerequestfromsonar
+	{
+		printCurrentMessage	
+		
+		onMsg(sonarrobot:sonarrobot(X))
+		{
+			[# Dist = payloadArg(0).toInt()   #]
+			println("Dist : $Dist")
+		}
+		
+	}
+	Goto waitforrequest
+}
+/* 
+QActor led context ctxpc
+{
+	State initState initial 
+	{
+		println("Enter initState")
+	}
+	Goto wait
+
+	State wait
+	{
+		printCurrentMessage	
+	}
+	Transition t0
+		whenMsg ledon -> handleledon
+		whenMsg ledoff -> handleledoff
+		
+	State handleledon
+	{
+		printCurrentMessage	
+		// script for ledon
+		println("Led acceso")
+	}
+	Goto wait
+	
+	State handleledoff
+	{
+		printCurrentMessage	
+		// script for ledoff
+		println("Led spento")
+	}
+	Goto wait
+
+*/
+QActor radar context ctxpc
+{
+	State initState initial 
+	{
+	   println("Enter initState")
+	   [# 
+	      radarPojo.radarSupport.setUpRadarGui();
+	   #]
+	}
+	Goto wait
+
+	State wait
+	{
+		printCurrentMessage	
+	} 
+	Transition t0 
+		whenMsg updateradar -> handleupdate
+		
+	State handleupdate
+	{
+		printCurrentMessage
+		onMsg(updateradar:updateradar(X))
+		{
+			[# 
+			   var Dist = payloadArg(0) 
+			   radarPojo.radarSupport.update( Dist, Dist)
+			#]
+		}
+
+		
+	}
+	Goto wait
+}
+
+
+	
